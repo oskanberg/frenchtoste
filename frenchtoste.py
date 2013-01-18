@@ -27,9 +27,11 @@ class FrenchToste(object):
         self.username       = USER
         self.password       = PASS
         self.r              = praw.Reddit(user_agent=self.name) 
+    
+    def login(self):
         print "Logging in ... "
         self.r.login(self.username, self.password)
-    
+        
     def get_comment_suggestions_for_post(self, post):
         print "Getting suggestions for:\n", str(post)
         duplicates = self.search_for_duplicates(post)
@@ -42,16 +44,14 @@ class FrenchToste(object):
                     try:
                         comments = sorted(comments, key=lambda x: x.score, reverse=True)
                     except Exception, e:
-                        print "Comments not loading quick enough. Sleeping for 10s."
-                        time.sleep(10)
-                        print "Trying again. Hope it works."
-                        comments = list(dup.comments)
-                        comments = sorted(comments, key=lambda x: x.score, reverse=True)
+                        print "Comments not loading correctly. Ignoring post."
+                        continue
                     suggestion = CommentSuggestion(comments[0], post)
                     suggestions.append(suggestion)
                     suggestions = self.apply_comment_filters(suggestions)
             if not suggestions:
                 print "No suggestions."
+            suggestions = sorted(suggestions, key=lambda x: x.originalScore, reverse=True)
             return suggestions
         else:
             print "No duplicates."
@@ -118,6 +118,7 @@ class FrenchToste(object):
             time.sleep(1)
         print "Posting comment ..."
         comment.commentBody = comment.commentBody.replace("&gt;", "> ")
+        self.login()
         try:
             comment.newSubmission.add_comment(comment.commentBody)
         except Exception, e:
@@ -150,5 +151,5 @@ class FrenchToste(object):
 
 ft = FrenchToste()
 #ft.check_subreddits(["pics", "funny", "all", "random"])
-ft.intelligent_search(10)
+ft.intelligent_search(15)
 
