@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
 #TODO: - when there are many suggestions, display all? select highest?
-#      - convert &gt; to "> "
 #      - multithreading.py - searcher and queue of possibilies
 
+from multiprocessing import Process, Queue, Manager
 import praw
 import time
 
@@ -39,7 +39,11 @@ class FrenchToste(object):
             duplicates = self.apply_post_filters(duplicates)
             suggestions = []
             for dup in duplicates:
-                comments = list(dup.comments)
+                try:
+                    comments = list(dup.comments)
+                except Exception, e:
+                    print "Forbidden. Ignoring."
+                    continue
                 if len(comments) > 0:
                     try:
                         comments = sorted(comments, key=lambda x: x.score, reverse=True)
@@ -128,7 +132,7 @@ class FrenchToste(object):
         self.lastPostTime = time.time()
         print "Done."
     
-    def intelligent_search(self, threshold):
+    def intelligent_search(self, threshold, queue):
         print "Warning: this might take a long time and will continue indefinitely."
         while True:
             print "Searching ..."
@@ -138,7 +142,8 @@ class FrenchToste(object):
                 if suggestion.originalScore < threshold:
                     continue
                 else:
-                    self.suggest(suggestion)
+                    #self.suggest(suggestion)
+                    queue.put(suggestion)
             self.space()
         
     def check_subreddits(self, subreddits):
@@ -149,7 +154,23 @@ class FrenchToste(object):
                 self.suggest(suggestion)
             self.space()
 
-ft = FrenchToste()
-#ft.check_subreddits(["pics", "funny", "all", "random"])
-ft.intelligent_search(15)
+def toast(num, queue):
+    print "Spawning french_toste"
+    ft = FrenchToste()
+    ft.intelligent_search(num, queue)
 
+def main():
+    print "Starting manager ..."
+    manager = Manager()
+    print "Initialising queue ..."
+    q       = manager.Queue()
+    print "Starting process ..."
+    ft_p    = Process(target = toast, args = (5,q)).start()
+    while True:
+        if not q.empty():
+            ft.suggest(q.get())
+        else:
+            time.sleep(5)
+
+if __name__ == "__main__":
+    main()
