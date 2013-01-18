@@ -41,9 +41,11 @@ class FrenchToste(object):
                 if len(comments) > 0:
                     try:
                         comments = sorted(comments, key=lambda x: x.score, reverse=True)
-                    except AttributeError, e:
-                        # sometimes praw.objects.MoreComments is returned
-                        comments = comments.comments
+                    except Exception, e:
+                        print "Comments not loading quick enough. Sleeping for 10s."
+                        time.sleep(10)
+                        print "Trying again. Hope it works."
+                        comments = list(dup.comments)
                         comments = sorted(comments, key=lambda x: x.score, reverse=True)
                     suggestion = CommentSuggestion(comments[0], post)
                     suggestions.append(suggestion)
@@ -101,7 +103,8 @@ class FrenchToste(object):
     def suggest(self, suggestion):
         self.space()
         print "############## Suggestion ##############"
-        print "commentBody: %s\nnewSubmission: %s\noriginalSubmission: %s\noriginalScore: %s" % (suggestion.commentBody, suggestion.newSubmission, suggestion.originalSubmission, suggestion.originalScore)
+        print "commentBody: %s\nnewSubmission: %s\noriginalSubmission: %s\noriginalScore: %s" \
+            % (suggestion.commentBody, suggestion.newSubmission, suggestion.originalSubmission, suggestion.originalScore)
         if self.prompt():
             self.post_comment(suggestion)
         self.space()
@@ -114,6 +117,7 @@ class FrenchToste(object):
             print "%ss ..." % ((time.lastPostTime - time.time()) - 600)
             time.sleep(1)
         print "Posting comment ..."
+        comment.commentBody = comment.commentBody.replace("&gt;", "> ")
         try:
             comment.newSubmission.add_comment(comment.commentBody)
         except Exception, e:
