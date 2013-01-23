@@ -24,7 +24,7 @@ class CommentSuggestion(object):
                 obj = repickler.get_submission(submission_id = self.commentID).comments[0]
                 return obj
             except Exception, e:
-                time.sleep(random.randint(10))
+                time.sleep(random.randint(0, 10))
 
     def getSubmissionObject(self):
         repickler = praw.Reddit('repickler')
@@ -33,15 +33,21 @@ class CommentSuggestion(object):
                 obj = repickler.get_submission(submission_id = self.submissionID)
                 return obj
             except Exception, e:
-                time.sleep(random.randint(10))
+                time.sleep(random.randint(0, 10))
 
 
 class FrenchTosteBrain(object):
     
     def __init__(self, dataFile, description):
-        self.debug          = True
+        self.debug          = False
         self.db             = dataFile
         self.description    = description
+        self.lock           = lock
+    
+    def hacky_sleep(self, length):
+        with self.lock:
+            time.sleep(length)
+            time.sleep(random.randint(0, 2))
     
     def store_suggestion(self, suggestion):
         # stores in new line as <submission>:<comment>:<prospect>
@@ -58,10 +64,11 @@ class FrenchTosteBrain(object):
         self.debugPrint('Getting suggestions for:\n%s' % str(post))
         duplicates = self.search_for_duplicates(post)
         if len(duplicates) > 0:
+            self.hacky_sleep(2)
             duplicates = self.apply_post_filters(duplicates)
             suggestions = []
             for dup in duplicates:
-                time.sleep(5)
+                self.hacky_sleep(2)
                 try:
                     comments = list(dup.comments)
                 except Exception, e:
@@ -80,6 +87,7 @@ class FrenchTosteBrain(object):
                     suggestions = self.apply_comment_filters(suggestions)
             if not suggestions:
                 self.debugPrint('No suggestions.')
+            self.hacky_sleep(2)
             suggestions = sorted(suggestions, key=lambda x: x.getCommentObject().score, reverse=True)
             return suggestions
         else:
@@ -88,10 +96,16 @@ class FrenchTosteBrain(object):
     
     def search_for_duplicates(self, post):
         self.debugPrint('Checking for duplicates:\n%s' % post.url)
+        r = praw.Reddit(self.description)
+        self.hacky_sleep(2)
+        dup = r.search(post.url)
+        self.debugPrint(dup)
+        self.hacky_sleep(2)
         try:
             # will fail if result is len 1
-            duplicates = list(self.r.search(post.url))
+            duplicates = list(dup)
         except Exception, e:
+            self.debugPrint(e)
             return []
         if post in duplicates:
             self.debugPrint('Removing original post ...')
@@ -123,16 +137,19 @@ class FrenchTosteBrain(object):
         r = praw.Reddit(self.description)
         while True:
             self.debugPrint('Searching ...')
+            self.hacky_sleep(2)
             try:
                 post = r.get_subreddit('random').get_hot(limit=1)
             except Exception, h:
                 self.debugPrint("HTTP error:\n" % h)
                 self.debugPrint("Ignoring.")
                 continue
+            self.hacky_sleep(2)
             try:
                 post = post.next()
             except Exception, e:
                 self.debugPrint("Error getting next post.")
+            self.hacky_sleep(2)
             suggestions = self.get_comment_suggestions_for_post(post)
             for suggestion in suggestions:
                 if suggestion.getCommentObject().score < threshold:
@@ -156,6 +173,11 @@ class FrenchToste(object):
         self.r         = praw.Reddit(description)
         self.brains    = [FrenchTosteBrain(dataFile, description) for i in xrange(brains)]
     
+    def hacky_sleep(self, length):
+        with self.lock:
+            print "Sleeping %d ..." % length
+            time.sleep(length)
+            
     def find_suggestions(self, threshold, outputFile):
         print "Outputting to: %s" % os.path.join(os.getcwd(), outputFile)
         with self.lock:
@@ -169,17 +191,21 @@ class FrenchToste(object):
     
     def post_comment(self, submissionID, commentID):
         while time.time() - self.lastPostTime <= 600:
-            print '%ss ...' % (600 - (time.time() - self.lastPostTime))
+            sys.stdout.write('\r%ss ...' % (600 - (time.time() - self.lastPostTime)))
+            sys.stdout.flush()
             time.sleep(1)
         print 'Regenerating comment ...'
+        self.hacky_sleep(2)
         submission = self.r.get_submission(submission_id = submissionID)
-        commmentBody = self.r.get_submission(submission_id = commentID).comments[0].body.replace('&gt;', '> ')
-        time.sleep(5)
+        self.hacky_sleep(2)
+        commentBody = self.r.get_submission(submission_id = commentID).comments[0].body.replace('&gt;', '> ')
+        self.hacky_sleep(5)
         print 'Logging in ...'
         self.r.login(self.username, self.password)
+        self.hacky_sleep(5)
         print 'Posting comment ...'
         try:
-            comment.getSubmissionObject().add_comment(newComment)
+            submission.add_comment(commentBody)
         except Exception, e:
             print 'Posting failed. You might be posting too often. Retrying.'
             print e
@@ -234,18 +260,40 @@ class SuggestionReader(object):
                 for sug in f:
                     sugs.append(sug)
         return sugs
+    
+    def remove_suggestion_string(self, suggestion):
+        with self.lock:
+            with open(self.inputFile, "r") as f:
+                lines = f.readlines()
+            with open(self.inputFile, "w") as f:
+                for line in lines:
+                    if line.startswith(suggestion):
+                        continue
+                    else:
+                        f.write(line)
         
     def loop(self):
+        loadingChars = ['\\','|','/','-']
+        loadingIndex = 0
+        os.system( [ 'clear', 'cls' ][ os.name == 'nt' ] )
         while True:
-            time.sleep(10)
-            os.system(['clear', 'cls'][os.name == 'nt'])
+            time.sleep(1)
+            sys.stdout.write('\r')
+            sys.stdout.flush()
             if os.stat(self.inputFile).st_size > 0:
                 suggestions = self.load_suggestion_strings()
                 for suggestion in suggestions:
                     args = suggestion.split(";")
                     self.ft.post_comment(args[0], args[1])
+                    self.remove_suggestion_string(suggestion)
             else:
-                print "No items available yet."
+                sys.stdout.write("No items available yet.")
+                sys.stdout.write(loadingChars[loadingIndex])
+                if loadingIndex == 3:
+                    loadingIndex = 0
+                else:
+                    loadingIndex += 1
+                sys.stdout.flush()
 
     
 def main():
@@ -257,11 +305,12 @@ def main():
     USER = raw_input()
     print 'Password:'
     PASS = raw_input()
-    DESCRIPTION = 'albert_hindsight v0.2 by /user/blackmirth: scans for popular information in reposts to consolidate information.'
+    print 'Description:'
+    DESCRIPTION = raw_input()
     
-    ft = FrenchToste(1, USER, PASS, DESCRIPTION, DATA)
+    ft = FrenchToste(5, USER, PASS, DESCRIPTION, DATA)
     sr = SuggestionReader(DATA, ft)
-    ft.find_suggestions(50, DATA)
+    ft.find_suggestions(30, DATA)
     sr.loop()
 
 if __name__ == '__main__':
