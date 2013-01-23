@@ -8,13 +8,14 @@ import os
 import random
 
 lock = Lock()
+DEBUG = False
 
 class CommentSuggestion(object):
     
     def __init__(self, originalCommentObject, submission):
         # Especially stringent so it can get pickled
-        self.commentID    = str(originalCommentObject.permalink)
-        self.submissionID = str(submission.id)
+        self.commentID    = originalCommentObject.permalink.encode('ascii', 'ignore')
+        self.submissionID = submission.id.encode('ascii', 'ignore')
         self.prospect     = int(self.getSubmissionObject().score)
     
     def getCommentObject(self):
@@ -24,7 +25,7 @@ class CommentSuggestion(object):
                 obj = repickler.get_submission(submission_id = self.commentID).comments[0]
                 return obj
             except Exception, e:
-                time.sleep(random.randint(0, 10))
+                time.sleep(random.randint(0, 5))
 
     def getSubmissionObject(self):
         repickler = praw.Reddit('repickler')
@@ -33,28 +34,45 @@ class CommentSuggestion(object):
                 obj = repickler.get_submission(submission_id = self.submissionID)
                 return obj
             except Exception, e:
-                time.sleep(random.randint(0, 10))
+                time.sleep(random.randint(0, 5))
 
 
 class FrenchTosteBrain(object):
     
-    def __init__(self, dataFile, description):
-        self.debug          = False
+    def __init__(self, dataFile, description, completeFile):
+        self.debug          = DEBUG
         self.db             = dataFile
         self.description    = description
         self.lock           = lock
+        self.completed      = completeFile
     
     def hacky_sleep(self, length):
         with self.lock:
             time.sleep(length)
-            time.sleep(random.randint(0, 2))
+            time.sleep(random.randint(0, 5))
+            
+    def load_complete(self):
+        if not os.path.exists(self.completed):
+            with open(self.completed, 'w') as f: pass
+        with self.lock:
+            with open(self.completed, 'r') as f:
+                complete = []
+                for c in f:
+                    c = c.strip()
+                    complete.append(c)
+        return complete
+    
+    def store_complete(self, complete):
+        with self.lock:
+            with open(self.completed, 'a') as f:
+                f.write('%s\n' % complete)
     
     def store_suggestion(self, suggestion):
         # stores in new line as <submission>:<comment>:<prospect>
         with self.lock:
-            with open(self.db, "a") as f:
-                self.debugPrint("Storing suggestion.")
-                f.write("%s;%s;%s\n" % (suggestion.submissionID, suggestion.commentID, suggestion.prospect))
+            with open(self.db, 'a') as f:
+                self.debugPrint('Storing suggestion.')
+                f.write('%s;%s;%s\n' % (suggestion.submissionID, suggestion.commentID, suggestion.prospect))
         
     def debugPrint(self, msg):
         if self.debug:
@@ -128,9 +146,6 @@ class FrenchTosteBrain(object):
                 self.debugPrint('Removing self comment.')
                 comments.remove(comment)
         return comments
-                
-    def space(self):
-        self.debugPrint('\n')
     
     def intelligent_search(self, threshold):
         self.debugPrint('Warning: this might take a long time and will continue indefinitely.')
@@ -139,25 +154,29 @@ class FrenchTosteBrain(object):
             self.debugPrint('Searching ...')
             self.hacky_sleep(2)
             try:
-                post = r.get_subreddit('random').get_hot(limit=1)
+                posts = r.get_subreddit('all').get_hot(limit=100)
             except Exception, h:
                 self.debugPrint("HTTP error:\n" % h)
                 self.debugPrint("Ignoring.")
                 continue
             self.hacky_sleep(2)
             try:
-                post = post.next()
+                posts = list(posts)
             except Exception, e:
-                self.debugPrint("Error getting next post.")
+                self.debugPrint(e)
             self.hacky_sleep(2)
-            suggestions = self.get_comment_suggestions_for_post(post)
-            for suggestion in suggestions:
-                if suggestion.getCommentObject().score < threshold:
-                    self.debugPrint("Comment score too low.")
-                    continue
+            for post in posts:
+                if post.id not in self.load_complete():
+                    self.store_complete(post.id)
+                    suggestions = self.get_comment_suggestions_for_post(post)
+                    for suggestion in suggestions:
+                        if suggestion.getCommentObject().score < threshold:
+                            self.debugPrint("Comment score too low.")
+                            continue
+                        else:
+                            self.store_suggestion(suggestion)
                 else:
-                    self.store_suggestion(suggestion)
-            self.space()
+                    self.debugPrint("Post has already been processed.")
     
     def set_output_file(self, outputFile):
         self.db = outputFile
@@ -165,13 +184,13 @@ class FrenchTosteBrain(object):
 
 class FrenchToste(object):
     
-    def __init__(self, brains, username, password, description, dataFile):
+    def __init__(self, brains, username, password, description, dataFile, completeFile):
         self.lastPostTime   = 0
         self.lock      = lock
         self.username  = username
         self.password  = password
         self.r         = praw.Reddit(description)
-        self.brains    = [FrenchTosteBrain(dataFile, description) for i in xrange(brains)]
+        self.brains    = [FrenchTosteBrain(dataFile, description, completeFile) for i in xrange(brains)]
     
     def hacky_sleep(self, length):
         with self.lock:
@@ -188,6 +207,7 @@ class FrenchToste(object):
         for brain in self.brains:
             brain.set_output_file(outputFile)
             Process(target = brain.intelligent_search, args = (50,)).start()
+            time.sleep(random.randint(0,10))
     
     def post_comment(self, submissionID, commentID):
         while time.time() - self.lastPostTime <= 600:
@@ -273,9 +293,9 @@ class SuggestionReader(object):
                         f.write(line)
         
     def loop(self):
-        loadingChars = ['\\','|','/','-']
+        loadingChars = [u' \\ ',u' | ',u' / ',u' --']
         loadingIndex = 0
-        os.system( [ 'clear', 'cls' ][ os.name == 'nt' ] )
+        os.system([ 'clear', 'cls' ][ os.name == 'nt' ])
         while True:
             time.sleep(1)
             sys.stdout.write('\r')
@@ -300,15 +320,16 @@ def main():
     if os.name != 'nt':
         print 'Proxy:'
         os.environ['http_proxy'] = raw_input()
-    DATA = os.path.abspath(os.path.join(os.path.curdir, 'suggestions'))
+    DATA     = os.path.abspath(os.path.join(os.path.curdir, 'suggestions'))
+    COMPLETE = os.path.abspath(os.path.join(os.path.curdir, 'complete'))
     print 'Username:'
-    USER = raw_input()
+    USER = 'french_toste'
     print 'Password:'
-    PASS = raw_input()
+    PASS = 'ftftftftftft'
     print 'Description:'
-    DESCRIPTION = raw_input()
+    DESCRIPTION = 'french_toste v1.0: consolidating repost information.'
     
-    ft = FrenchToste(5, USER, PASS, DESCRIPTION, DATA)
+    ft = FrenchToste(2, USER, PASS, DESCRIPTION, DATA, COMPLETE)
     sr = SuggestionReader(DATA, ft)
     ft.find_suggestions(30, DATA)
     sr.loop()
