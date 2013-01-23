@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 
-#TODO: - when there are many suggestions, display all? select highest?
-#      - multithreading.py - searcher and queue of possibilies
-
 from multiprocessing import Process, Lock
 import praw
 import time
@@ -10,12 +7,15 @@ import sys
 import os
 import random
 
+lock = Lock()
+print 'Proxy:'
+os.environ['http_proxy'] = raw_input()
 DATA = os.path.abspath(os.path.join(os.path.curdir, 'suggestions'))
-#USER = 'french_toste'
-USER = 'albert_hindsight'
-#PASS = 'ftftftftftft'
-PASS = 'albert_hindsight'
-DESCRIPTION = 'albert_hindsight v0.1 by /u/blackmirth: scans for popular information posted in reposts to consolidate information.'
+print 'Username:'
+USER = raw_input()
+print 'Password:'
+PASS = raw_input()
+DESCRIPTION = 'albert_hindsight v0.2 by /user/blackmirth: scans for popular information in reposts to consolidate information.'
 
 
 class CommentSuggestion(object):
@@ -47,16 +47,15 @@ class CommentSuggestion(object):
 
 class FrenchTosteBrain(object):
     
-    def __init__(self, r, lock):
-        self.lock           = lock
+    def __init__(self):
         self.debug          = True
         self.db             = DATA
-        self.r              = r
     
     def store_suggestion(self, suggestion):
         # stores in new line as <submission>:<comment>:<prospect>
         with self.lock:
             with open(self.db, "a") as f:
+                self.debugPrint("Storing suggestion.")
                 f.write("%s;%s;%s\n" % (suggestion.submissionID, suggestion.commentID, suggestion.prospect))
         
     def debugPrint(self, msg):
@@ -70,6 +69,7 @@ class FrenchTosteBrain(object):
             duplicates = self.apply_post_filters(duplicates)
             suggestions = []
             for dup in duplicates:
+                time.sleep(5)
                 try:
                     comments = list(dup.comments)
                 except Exception, e:
@@ -128,10 +128,11 @@ class FrenchTosteBrain(object):
     
     def intelligent_search(self, threshold):
         self.debugPrint('Warning: this might take a long time and will continue indefinitely.')
+        r = praw.Reddit(DESCRIPTION)
         while True:
             self.debugPrint('Searching ...')
             try:
-                post = self.r.get_subreddit('random').get_hot(limit=1)
+                post = r.get_subreddit('random').get_hot(limit=1)
             except Exception, h:
                 self.debugPrint("HTTP error:\n" % h)
                 self.debugPrint("Ignoring.")
@@ -143,6 +144,7 @@ class FrenchTosteBrain(object):
             suggestions = self.get_comment_suggestions_for_post(post)
             for suggestion in suggestions:
                 if suggestion.getCommentObject().score < threshold:
+                    self.debugPrint("Comment score too low.")
                     continue
                 else:
                     self.store_suggestion(suggestion)
@@ -154,24 +156,24 @@ class FrenchTosteBrain(object):
 
 class FrenchToste(object):
     
-    def __init__(self, brains, lock):
+    def __init__(self, brains):
         self.lastPostTime   = 0
+        self.lock      = lock
         self.username  = USER
         self.password  = PASS
         self.r         = praw.Reddit(DESCRIPTION)
-        self.brains    = [FrenchTosteBrain(self.r, lock) for i in xrange(brains)]
-        print 'Logging in ...'
-        self.r.login(self.username, self.password)
+        self.brains    = [FrenchTosteBrain() for i in xrange(brains)]
     
     def find_suggestions(self, threshold, outputFile):
         print "Outputting to: %s" % os.path.join(os.getcwd(), outputFile)
-        try:
-            with open(outputFile, "a+") as f: pass
-        except IOError as e:
-            print "IO Error:", e
+        with self.lock:
+            try:
+                with open(outputFile, "a+") as f: pass
+            except IOError as e:
+                print "IO Error:", e
         for brain in self.brains:
             brain.set_output_file(outputFile)
-            Process(target = brain.intelligent_search, args = (threshold,)).start()
+            Process(target = brain.intelligent_search, args = (50,)).start()
     
     def post_comment(self, submissionID, commentID):
         while time.time() - self.lastPostTime <= 600:
@@ -181,6 +183,8 @@ class FrenchToste(object):
         submission = self.r.get_submission(submission_id = submissionID)
         commmentBody = self.r.get_submission(submission_id = commentID).comments[0].body.replace('&gt;', '> ')
         time.sleep(5)
+        print 'Logging in ...'
+        self.r.login(self.username, self.password)
         print 'Posting comment ...'
         try:
             comment.getSubmissionObject().add_comment(newComment)
@@ -195,7 +199,7 @@ class FrenchToste(object):
 
 class SuggestionReader(object):
     
-    def __init__(self, inputFile, ft, lock):
+    def __init__(self, inputFile, ft):
         self.inputFile = inputFile
         self.ft        = ft
         self.lock      = lock
@@ -253,15 +257,10 @@ class SuggestionReader(object):
 
     
 def main():
-    lock = Lock()
-    ft = FrenchToste(0, lock)
-    sr = SuggestionReader(DATA, ft, lock)
+    ft = FrenchToste(1)
+    sr = SuggestionReader(DATA, ft)
     ft.find_suggestions(50, DATA)
     sr.loop()
-    #r = praw.Reddit(DESCRIPTION)
-    #r.login(USER,PASS)
-    #a = r.get_subreddit("random").get_hot(1)
-    #a.next().add_comment("hello")
 
 if __name__ == '__main__':
     main()
