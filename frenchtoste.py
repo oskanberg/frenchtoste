@@ -8,15 +8,6 @@ import os
 import random
 
 lock = Lock()
-print 'Proxy:'
-os.environ['http_proxy'] = raw_input()
-DATA = os.path.abspath(os.path.join(os.path.curdir, 'suggestions'))
-print 'Username:'
-USER = raw_input()
-print 'Password:'
-PASS = raw_input()
-DESCRIPTION = 'albert_hindsight v0.2 by /user/blackmirth: scans for popular information in reposts to consolidate information.'
-
 
 class CommentSuggestion(object):
     
@@ -47,9 +38,10 @@ class CommentSuggestion(object):
 
 class FrenchTosteBrain(object):
     
-    def __init__(self):
+    def __init__(self, dataFile, description):
         self.debug          = True
-        self.db             = DATA
+        self.db             = dataFile
+        self.description    = description
     
     def store_suggestion(self, suggestion):
         # stores in new line as <submission>:<comment>:<prospect>
@@ -128,7 +120,7 @@ class FrenchTosteBrain(object):
     
     def intelligent_search(self, threshold):
         self.debugPrint('Warning: this might take a long time and will continue indefinitely.')
-        r = praw.Reddit(DESCRIPTION)
+        r = praw.Reddit(self.description)
         while True:
             self.debugPrint('Searching ...')
             try:
@@ -156,13 +148,13 @@ class FrenchTosteBrain(object):
 
 class FrenchToste(object):
     
-    def __init__(self, brains):
+    def __init__(self, brains, username, password, description, dataFile):
         self.lastPostTime   = 0
         self.lock      = lock
-        self.username  = USER
-        self.password  = PASS
-        self.r         = praw.Reddit(DESCRIPTION)
-        self.brains    = [FrenchTosteBrain() for i in xrange(brains)]
+        self.username  = username
+        self.password  = password
+        self.r         = praw.Reddit(description)
+        self.brains    = [FrenchTosteBrain(dataFile, description) for i in xrange(brains)]
     
     def find_suggestions(self, threshold, outputFile):
         print "Outputting to: %s" % os.path.join(os.getcwd(), outputFile)
@@ -257,7 +249,17 @@ class SuggestionReader(object):
 
     
 def main():
-    ft = FrenchToste(1)
+    if os.name != 'nt':
+        print 'Proxy:'
+        os.environ['http_proxy'] = raw_input()
+    DATA = os.path.abspath(os.path.join(os.path.curdir, 'suggestions'))
+    print 'Username:'
+    USER = raw_input()
+    print 'Password:'
+    PASS = raw_input()
+    DESCRIPTION = 'albert_hindsight v0.2 by /user/blackmirth: scans for popular information in reposts to consolidate information.'
+    
+    ft = FrenchToste(1, USER, PASS, DESCRIPTION, DATA)
     sr = SuggestionReader(DATA, ft)
     ft.find_suggestions(50, DATA)
     sr.loop()
