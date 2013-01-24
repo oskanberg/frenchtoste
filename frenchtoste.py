@@ -82,7 +82,6 @@ class FrenchTosteBrain(object):
         self.debugPrint('Getting suggestions for:\n%s' % str(post))
         duplicates = self.search_for_duplicates(post)
         if len(duplicates) > 0:
-            self.hacky_sleep(2)
             duplicates = self.apply_post_filters(duplicates)
             suggestions = []
             for dup in duplicates:
@@ -164,10 +163,10 @@ class FrenchTosteBrain(object):
                 posts = list(posts)
             except Exception, e:
                 self.debugPrint(e)
-            self.hacky_sleep(2)
             for post in posts:
                 if post.id not in self.load_complete():
                     self.store_complete(post.id)
+                    self.hacky_sleep(2)
                     suggestions = self.get_comment_suggestions_for_post(post)
                     for suggestion in suggestions:
                         if suggestion.getCommentObject().score < threshold:
@@ -226,13 +225,13 @@ class FrenchToste(object):
         print 'Posting comment ...'
         try:
             submission.add_comment(commentBody)
+            return True
         except Exception, e:
             print 'Posting failed. You might be posting too often. Retrying.'
             print e
             self.lastPostTime = time.time()
             self.post_comment(submissionID, commentID)
         self.lastPostTime = time.time()
-        print 'Done.'
 
 
 class SuggestionReader(object):
@@ -241,6 +240,7 @@ class SuggestionReader(object):
         self.inputFile = inputFile
         self.ft        = ft
         self.lock      = lock
+        self.commentsPosted = 0
     
     def space(self):
         print '\n'
@@ -304,10 +304,11 @@ class SuggestionReader(object):
                 suggestions = self.load_suggestion_strings()
                 for suggestion in suggestions:
                     args = suggestion.split(";")
-                    self.ft.post_comment(args[0], args[1])
-                    self.remove_suggestion_string(suggestion)
+                    if self.ft.post_comment(args[0], args[1]):
+                        self.commentsPosted += 1
+                        self.remove_suggestion_string(suggestion)
             else:
-                sys.stdout.write("No items available yet.")
+                sys.stdout.write("%d comments posted. " % self.commentsPosted)
                 sys.stdout.write(loadingChars[loadingIndex])
                 if loadingIndex == 3:
                     loadingIndex = 0
@@ -323,11 +324,11 @@ def main():
     DATA     = os.path.abspath(os.path.join(os.path.curdir, 'suggestions'))
     COMPLETE = os.path.abspath(os.path.join(os.path.curdir, 'complete'))
     print 'Username:'
-    USER = 'french_toste'
+    USER = raw_input()
     print 'Password:'
-    PASS = 'ftftftftftft'
+    PASS = raw_input()
     print 'Description:'
-    DESCRIPTION = 'french_toste v1.0: consolidating repost information.'
+    DESCRIPTION = raw_input()
     
     ft = FrenchToste(2, USER, PASS, DESCRIPTION, DATA, COMPLETE)
     sr = SuggestionReader(DATA, ft)
