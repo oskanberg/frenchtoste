@@ -8,7 +8,7 @@ import os
 import random
 
 lock = Lock()
-DEBUG = False
+DEBUG = True
 
 class CommentSuggestion(object):
     
@@ -67,12 +67,21 @@ class FrenchTosteBrain(object):
             with open(self.completed, 'a') as f:
                 f.write('%s\n' % complete)
     
+    def load_suggestion_strings(self):
+        with self.lock:
+            with open(self.db, "r") as f:
+                sugs = []
+                for sug in f:
+                    sugs.append(sug.strip())
+        return sugs
+
     def store_suggestion(self, suggestion):
         # stores in new line as <submission>:<comment>:<prospect>
         with self.lock:
+            sug = '%s;%s;%s\n' % (suggestion.submissionID, suggestion.commentID, suggestion.prospect)
+            self.debugPrint('Storing suggestion.')
             with open(self.db, 'a') as f:
-                self.debugPrint('Storing suggestion.')
-                f.write('%s;%s;%s\n' % (suggestion.submissionID, suggestion.commentID, suggestion.prospect))
+                f.write(sug)
         
     def debugPrint(self, msg):
         if self.debug:
@@ -104,7 +113,6 @@ class FrenchTosteBrain(object):
                     suggestions = self.apply_comment_filters(suggestions)
             if not suggestions:
                 self.debugPrint('No suggestions.')
-            self.hacky_sleep(2)
             suggestions = sorted(suggestions, key=lambda x: x.getCommentObject().score, reverse=True)
             return suggestions
         else:
@@ -117,7 +125,6 @@ class FrenchTosteBrain(object):
         self.hacky_sleep(2)
         dup = r.search(post.url)
         self.debugPrint(dup)
-        self.hacky_sleep(2)
         try:
             # will fail if result is len 1
             duplicates = list(dup)
@@ -132,7 +139,8 @@ class FrenchTosteBrain(object):
     def apply_post_filters(self, posts):
         self.debugPrint('Applying post filters ...')
         for post in posts:
-            if 'x-post' in post.title or 'xpost' in post.title:
+            t = post.title
+            if 'x-post' in t or 'xpost' in t or 'x post' in t or 'crosspost' in t or 'cross post' in t:
                 self.debugPrint('Removing xpost.')
                 posts.remove(post)
         return posts
@@ -153,12 +161,11 @@ class FrenchTosteBrain(object):
             self.debugPrint('Searching ...')
             self.hacky_sleep(2)
             try:
-                posts = r.get_subreddit('all').get_hot(limit=100)
+                posts = r.get_new(limit = 100)
             except Exception, h:
                 self.debugPrint("HTTP error:\n" % h)
                 self.debugPrint("Ignoring.")
                 continue
-            self.hacky_sleep(2)
             try:
                 posts = list(posts)
             except Exception, e:
@@ -166,7 +173,6 @@ class FrenchTosteBrain(object):
             for post in posts:
                 if post.id not in self.load_complete():
                     self.store_complete(post.id)
-                    self.hacky_sleep(2)
                     suggestions = self.get_comment_suggestions_for_post(post)
                     for suggestion in suggestions:
                         if suggestion.getCommentObject().score < threshold:
@@ -295,7 +301,7 @@ class SuggestionReader(object):
     def loop(self):
         loadingChars = [u' \\ ',u' | ',u' / ',u' --']
         loadingIndex = 0
-        os.system([ 'clear', 'cls' ][ os.name == 'nt' ])
+        os.system(['clear', 'cls'][os.name == 'nt'])
         while True:
             time.sleep(1)
             sys.stdout.write('\r')
@@ -323,14 +329,23 @@ def main():
         os.environ['http_proxy'] = raw_input()
     DATA     = os.path.abspath(os.path.join(os.path.curdir, 'suggestions'))
     COMPLETE = os.path.abspath(os.path.join(os.path.curdir, 'complete'))
-    print 'Username:'
-    USER = raw_input()
-    print 'Password:'
-    PASS = raw_input()
-    print 'Description:'
-    DESCRIPTION = raw_input()
-    
-    ft = FrenchToste(2, USER, PASS, DESCRIPTION, DATA, COMPLETE)
+    CREDENTIALS = os.path.abspath(os.path.join(os.path.curdir, 'credentials'))
+    if os.path.exists(CREDENTIALS):
+        with open(CREDENTIALS, 'r') as f:
+            c = f.readlines()
+        USER = c[0].strip()
+        PASS = c[1].strip()
+        DESCRIPTION = c[2].strip()
+    else:
+        print 'User:'
+        USER = raw_input()
+        print 'Password:'
+        PASS = raw_input()
+        print 'Description:'
+        DESCRIPTION = raw_input()
+    os.system(['clear', 'cls'][os.name == 'nt'])
+    print DESCRIPTION
+    ft = FrenchToste(3, USER, PASS, DESCRIPTION, DATA, COMPLETE)
     sr = SuggestionReader(DATA, ft)
     ft.find_suggestions(30, DATA)
     sr.loop()
