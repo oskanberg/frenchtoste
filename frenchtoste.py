@@ -190,16 +190,16 @@ class FrenchTosteBrain(object):
             # if we've processed everything in /r/all, cool off for 
             # 300s to let it repopulate. Search /r/random meanwhile
             if allProcessed:
-                self.debugPrint('Exhausted. Searching random subreddits ...')
+                self.debugPrint('/r/all exhausted. Searching /r/random ...')
                 subreddit = 'random'
                 postLimit = 3
                 coolOffMarker = time.time()
-            if time.time() - coolOffMarker > 300:
-                self.debugPrint('Resuming all search ...')
+            if subreddit == 'all' and time.time() - coolOffMarker > 300:
+                self.debugPrint('Resuming /r/all search ...')
                 postLimit = 100
                 subreddit = 'all'
             else:
-                print "%d until /r/all resume." % 300 - (time.time() - coolOffMarker)
+                self.debugPrint("%0.0fs until /r/all resume." % (300 - (time.time() - coolOffMarker)))
     
     def set_output_file(self, outputFile):
         self.db = outputFile
