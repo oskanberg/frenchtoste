@@ -148,8 +148,12 @@ class FrenchTosteBrain(object):
         self.debugPrint('Applying comment filters ...')
         for comment in comments:
             co = comment.getCommentObject()
-            if co.submission.author == co.author:
-                self.debugPrint('Removing self comment.')
+            try:
+                if co.submission.author == co.author:
+                    self.debugPrint('Removing self comment.')
+                    comments.remove(comment)
+            except Exception,e:
+                self.debugPrint(e)
                 comments.remove(comment)
         return comments
     
@@ -194,11 +198,11 @@ class FrenchTosteBrain(object):
                 subreddit = 'random'
                 postLimit = 3
                 coolOffMarker = time.time()
-            if subreddit == 'all' and time.time() - coolOffMarker > 300:
+            if subreddit == 'random' and time.time() - coolOffMarker > 300:
                 self.debugPrint('Resuming /r/all search ...')
                 postLimit = 100
                 subreddit = 'all'
-            else:
+            elif subreddit == 'random' and time.time() - coolOffMarker < 300:
                 self.debugPrint("%0.0fs until /r/all resume." % (300 - (time.time() - coolOffMarker)))
     
     def set_output_file(self, outputFile):
