@@ -85,7 +85,10 @@ class FrenchTosteBrain(object):
         
     def debugPrint(self, msg):
         if self.debug:
-            print msg
+            try:
+                print msg
+            except Exception, e:
+                print '[exception printing value. Probably Unicode]'
         
     def get_comment_suggestions_for_post(self, post):
         self.debugPrint('Getting suggestions for:\n%s' % str(post))
@@ -341,9 +344,9 @@ class SuggestionReader(object):
 
     
 def main():
-    if os.name != 'nt':
-        print 'Proxy:'
-        os.environ['http_proxy'] = raw_input()
+    #if os.name != 'nt':
+    #    print 'Proxy:'
+    #    os.environ['http_proxy'] = raw_input()
     DATA     = os.path.abspath(os.path.join(os.path.curdir, 'suggestions'))
     COMPLETE = os.path.abspath(os.path.join(os.path.curdir, 'complete'))
     CREDENTIALS = os.path.abspath(os.path.join(os.path.curdir, 'credentials'))
