@@ -8,7 +8,7 @@ import os
 import random
 
 lock = Lock()
-DEBUG = True
+DEBUG = False 
 
 class CommentSuggestion(object):
     
@@ -172,7 +172,7 @@ class FrenchTosteBrain(object):
             try:
                 posts = r.get_subreddit(subreddit).get_hot(limit = postLimit)
             except Exception, h:
-                self.debugPrint('HTTP error:\n' % h)
+                self.debugPrint('HTTP error:\n%s' % h)
                 self.debugPrint('Ignoring.')
                 continue
             try:
