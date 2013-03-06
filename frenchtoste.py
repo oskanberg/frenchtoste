@@ -8,7 +8,7 @@ import os
 import random
 
 lock = Lock()
-DEBUG = False 
+DEBUG = True 
 
 class CommentSuggestion(object):
     
@@ -251,8 +251,19 @@ class FrenchToste(object):
         commentBody = self.r.get_submission(submission_id = commentID).comments[0].body.replace('&gt;', '> ')
         self.hacky_sleep(5)
         print 'Logging in ...'
-        self.r.login(self.username, self.password)
-        self.hacky_sleep(5)
+        try:
+            self.r.login(self.username, self.password)
+            self.hacky_sleep(5)
+        except Exception, e:
+            print 'Logging in failed. Retrying.'
+            print e
+            if retries > 0:
+                retries -= 1
+                self.lastPostTime = time.time()
+                self.post_comment(submissionID, commentID, retries)
+            else:
+                print 'Retries exhausted. Abandoning.'
+                return True
         print 'Posting comment ...'
         try:
             submission.add_comment(commentBody)
