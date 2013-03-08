@@ -246,9 +246,20 @@ class FrenchToste(object):
             time.sleep(1)
         print 'Regenerating comment ...'
         self.hacky_sleep(2)
-        submission = self.r.get_submission(submission_id = submissionID)
-        self.hacky_sleep(2)
-        commentBody = self.r.get_submission(submission_id = commentID).comments[0].body.replace('&gt;', '> ')
+        try:
+            submission = self.r.get_submission(submission_id = submissionID)
+            self.hacky_sleep(2)
+            commentBody = self.r.get_submission(submission_id = commentID).comments[0].body.replace('&gt;', '> ')
+        except Exception, e:
+            print 'Failed to get submission/comment:'
+            print e
+            if retries > 0:
+                retries -= 1
+                self.lastPostTime = time.time()
+                self.post_comment(submissionID, commentID, retries)
+            else:
+                print 'Retries exhausted. Abandoning.'
+                return True
         self.hacky_sleep(5)
         print 'Logging in ...'
         try:
