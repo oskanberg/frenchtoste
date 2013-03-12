@@ -62,7 +62,7 @@ class FrenchTosteBrain(object):
                     complete.append(c)
         return complete
     
-    def store_complete(self, complete):
+    def store_complete(self, complete): 
         with self.lock:
             with open(self.completed, 'a') as f:
                 f.write('%s\n' % complete)
@@ -75,15 +75,19 @@ class FrenchTosteBrain(object):
                     sugs.append(sug.strip())
         return sugs
 
-    def store_suggestion(self, suggestion):
-        # stores in new line as <submission>:<comment>:<prospect>
-        with self.lock:
-            sug = '%s;%s;%s\n' % (suggestion.submissionID, suggestion.commentID, suggestion.prospect)
-            self.debugPrint('Storing suggestion.')
-            with open(self.db, 'a') as f:
-                f.write(sug)
+    def store_suggestion(self, suggestion, kind):
+        if kind == 'ADD':
+            # stores in new line as <submission>;<comment>;<prospect>
+            sug = '%s;%s;%s;ADD\n' % (suggestion.submissionID, suggestion.commentID, suggestion.prospect)
+        elif kind == 'DEL':
+            sug = '%s;DEL\n' % (suggestion)
+        if sug not in self.load_suggestion_strings():
+            with self.lock:
+                self.debug_print('Storing suggestion.')
+                with open(self.db, 'a') as f:
+                    f.write(sug)
         
-    def debugPrint(self, msg):
+    def debug_print(self, msg):
         if self.debug:
             try:
                 print msg
@@ -91,7 +95,7 @@ class FrenchTosteBrain(object):
                 print '[exception printing value. Probably Unicode]'
         
     def get_comment_suggestions_for_post(self, post):
-        self.debugPrint('Getting suggestions for:\n%s' % str(post))
+        self.debug_print('Getting suggestions for:\n%s' % str(post))
         duplicates = self.search_for_duplicates(post)
         if len(duplicates) > 0:
             duplicates = self.apply_post_filters(duplicates)
@@ -101,29 +105,29 @@ class FrenchTosteBrain(object):
                 try:
                     comments = list(dup.comments)
                 except Exception, e:
-                    self.debugPrint('Forbidden. Ignoring.')
-                    self.debugPrint(e)
+                    self.debug_print('Forbidden. Ignoring.')
+                    self.debug_print(e)
                     continue
                 if len(comments) > 0:
                     try:
                         comments = sorted(comments, key=lambda x: x.score, reverse=True)
                     except Exception, e:
-                        self.debugPrint('Comments not loading correctly. Ignoring.')
-                        self.debugPrint(e)
+                        self.debug_print('Comments not loading correctly. Ignoring.')
+                        self.debug_print(e)
                         continue
                     suggestion = CommentSuggestion(comments[0], post)
                     suggestions.append(suggestion)
                     suggestions = self.apply_comment_filters(suggestions)
             if not suggestions:
-                self.debugPrint('No suggestions.')
+                self.debug_print('No suggestions.')
             suggestions = sorted(suggestions, key=lambda x: x.getCommentObject().score, reverse=True)
             return suggestions
         else:
-            self.debugPrint('No duplicates.')
+            self.debug_print('No duplicates.')
             return []
     
     def search_for_duplicates(self, post):
-        self.debugPrint('Checking for duplicates:\n%s' % post.url)
+        self.debug_print('Checking for duplicates:\n%s' % post.url)
         r = praw.Reddit(self.description)
         self.hacky_sleep(2)
         dup = r.search(post.url)
@@ -131,54 +135,69 @@ class FrenchTosteBrain(object):
             # will fail if result is len 1
             duplicates = list(dup)
         except Exception, e:
-            self.debugPrint(e)
+            self.debug_print(e)
             return []
         if post in duplicates:
-            self.debugPrint('Removing original post ...')
+            self.debug_print('Removing original post ...')
             duplicates.remove(post)
         return duplicates
     
     def apply_post_filters(self, posts):
-        self.debugPrint('Applying post filters ...')
+        self.debug_print('Applying post filters ...')
         for post in posts:
-            t = post.title
+            t = post.title.lower()
             if 'x-post' in t or 'xpost' in t or 'x post' in t or 'crosspost' in t or 'cross post' in t:
-                self.debugPrint('Removing xpost.')
+                self.debug_print('Removing xpost.')
                 posts.remove(post)
         return posts
     
     def apply_comment_filters(self, comments):
-        self.debugPrint('Applying comment filters ...')
+        self.debug_print('Applying comment filters ...')
         for comment in comments:
             co = comment.getCommentObject()
             try:
                 if co.submission.author == co.author:
-                    self.debugPrint('Removing self comment.')
+                    self.debug_print('Removing self comment.')
                     comments.remove(comment)
             except Exception,e:
-                self.debugPrint(e)
+                self.debug_print(e)
                 comments.remove(comment)
         return comments
-    
+
+    def scrutinise_posts(self, username):
+        print 'Scrutinising posts.'
+        r = praw.Reddit(self.description)
+        redditor = r.get_redditor(username)
+        self.hacky_sleep(2)
+        posts = list(redditor.get_comments(limit = 100))
+        for post in posts:
+            if post.score < 0:
+                self.hacky_sleep(2)
+                print 'DELETE THIS:'
+                print post.permalink.encode('ascii', 'ignore')
+                self.store_suggestion(post.permalink.encode('ascii', 'ignore'), 'DEL')
+        # we really don't need to do this often.
+        time.sleep(100)
+        
     def intelligent_search(self, threshold):
-        self.debugPrint('Warning: this might take a long time and will continue indefinitely.')
+        self.debug_print('Warning: this might take a long time and will continue indefinitely.')
         r = praw.Reddit(self.description)
         coolOffMarker = 0
         postLimit = 100
         subreddit = 'all'
         while True:
-            self.debugPrint('Searching ...')
+            self.debug_print('Searching ...')
             self.hacky_sleep(2)
             try:
                 posts = r.get_subreddit(subreddit).get_hot(limit = postLimit)
             except Exception, h:
-                self.debugPrint('HTTP error:\n%s' % h)
-                self.debugPrint('Ignoring.')
+                self.debug_print('HTTP error:\n%s' % h)
+                self.debug_print('Ignoring.')
                 continue
             try:
                 posts = list(posts)
             except Exception, e:
-                self.debugPrint(e)
+                self.debug_print(e)
             allProcessed = True
             for post in posts:
                 if post.id not in self.load_complete():
@@ -187,26 +206,26 @@ class FrenchTosteBrain(object):
                     suggestions = self.get_comment_suggestions_for_post(post)
                     for suggestion in suggestions:
                         if suggestion.getCommentObject().score < threshold:
-                            self.debugPrint('Comment score too low.')
+                            self.debug_print('Comment score too low.')
                             continue
                         else:
-                            self.store_suggestion(suggestion)
+                            self.store_suggestion(suggestion, 'ADD')
                 else:
-                    self.debugPrint('Post has already been processed.')
+                    self.debug_print('Post has already been processed.')
             
             # if we've processed everything in /r/all, cool off for 
             # 300s to let it repopulate. Search /r/random meanwhile
             if allProcessed:
-                self.debugPrint('/r/all exhausted. Searching /r/random ...')
+                self.debug_print('/r/all exhausted. Searching /r/random ...')
                 subreddit = 'random'
                 postLimit = 3
                 coolOffMarker = time.time()
             if subreddit == 'random' and time.time() - coolOffMarker > 300:
-                self.debugPrint('Resuming /r/all search ...')
+                self.debug_print('Resuming /r/all search ...')
                 postLimit = 100
                 subreddit = 'all'
             elif subreddit == 'random' and time.time() - coolOffMarker < 300:
-                self.debugPrint("%0.0fs until /r/all resume." % (300 - (time.time() - coolOffMarker)))
+                self.debug_print("%0.0fs until /r/all resume." % (300 - (time.time() - coolOffMarker)))
     
     def set_output_file(self, outputFile):
         self.db = outputFile
@@ -220,7 +239,7 @@ class FrenchToste(object):
         self.username  = username
         self.password  = password
         self.r         = praw.Reddit(description)
-        self.brains    = [FrenchTosteBrain(dataFile, description, completeFile) for i in xrange(brains)]
+        self.brains    = [FrenchTosteBrain(dataFile, description, completeFile) for i in xrange(brains + 1)]
     
     def hacky_sleep(self, length):
         with self.lock:
@@ -234,11 +253,35 @@ class FrenchToste(object):
                 with open(outputFile, 'a+') as f: pass
             except IOError as e:
                 print 'IO Error:', e
-        for brain in self.brains:
+        for brain in self.brains[:1]:
             brain.set_output_file(outputFile)
             Process(target = brain.intelligent_search, args = (50,)).start()
             time.sleep(random.randint(0,10))
-    
+        Process(target = self.brains[-1].scrutinise_posts, args = (self.username,)).start()
+
+    def delete_comment(self, commentURL, retries):
+        print 'Deleting %s' % commentURL
+        try:
+            comment = self.r.get_submission(submission_id = commentURL).comments[0]
+        except IndexError, e:
+            print 'Comment does not exist. Cache likely has not updated.'
+            return True
+        print 'logging in ...'
+        self.hacky_sleep(5)
+        try:
+            self.r.login(self.username, self.password)
+            self.hacky_sleep(5)
+            comment.delete()
+        except Exception, e:
+            print 'Failed to delete: '
+            print e
+            if retries > 0:
+                print 'Retrying delete ...'
+                self.delete_comment(commentURL, retries - 1)
+            else:
+                print 'Complete failure to delete.'
+        return True
+        
     def post_comment(self, submissionID, commentID, retries):
         while time.time() - self.lastPostTime <= 600:
             sys.stdout.write('\r%ss ...' % (600 - (time.time() - self.lastPostTime)))
@@ -321,7 +364,6 @@ class SuggestionReader(object):
                 return False
     
     def load_suggestion_strings(self):
-        print self.inputFile
         with self.lock:
             with open(self.inputFile, 'r') as f:
                 sugs = []
@@ -351,10 +393,14 @@ class SuggestionReader(object):
             if os.stat(self.inputFile).st_size > 0:
                 suggestions = self.load_suggestion_strings()
                 for suggestion in suggestions:
-                    args = suggestion.split(";")
-                    if self.ft.post_comment(args[0], args[1], 2):
-                        self.commentsPosted += 1
-                        self.remove_suggestion_string(suggestion)
+                    args = [s.strip() for s in suggestion.split(";")]
+                    if args[-1] == 'DEL':
+                        if self.ft.delete_comment(args[0], 2):
+                            self.remove_suggestion_string(suggestion)
+                    elif args[-1] == 'ADD':
+                        if self.ft.post_comment(args[0], args[1], 2):
+                            self.commentsPosted += 1
+                            self.remove_suggestion_string(suggestion)
             else:
                 sys.stdout.write('%d comments posted.' % self.commentsPosted)
                 sys.stdout.write(loadingChars[loadingIndex])
