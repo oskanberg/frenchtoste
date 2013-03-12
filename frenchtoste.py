@@ -62,7 +62,7 @@ class FrenchTosteBrain(object):
                     complete.append(c)
         return complete
     
-    def store_complete(self, complete):
+    def store_complete(self, complete): 
         with self.lock:
             with open(self.completed, 'a') as f:
                 f.write('%s\n' % complete)
@@ -77,11 +77,12 @@ class FrenchTosteBrain(object):
 
     def store_suggestion(self, suggestion):
         # stores in new line as <submission>:<comment>:<prospect>
-        with self.lock:
-            sug = '%s;%s;%s\n' % (suggestion.submissionID, suggestion.commentID, suggestion.prospect)
-            self.debugPrint('Storing suggestion.')
-            with open(self.db, 'a') as f:
-                f.write(sug)
+        sug = '%s;%s;%s\n' % (suggestion.submissionID, suggestion.commentID, suggestion.prospect)
+        if sug not in self.load_suggestion_strings():
+            with self.lock:
+                self.debugPrint('Storing suggestion.')
+                with open(self.db, 'a') as f:
+                    f.write(sug)
         
     def debugPrint(self, msg):
         if self.debug:
